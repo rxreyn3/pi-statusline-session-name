@@ -44,7 +44,7 @@ pi install git:github.com/rxreyn3/pi-statusline-session-name
 You can also pin a tag or branch:
 
 ```bash
-pi install git:github.com/rxreyn3/pi-statusline-session-name@v0.2.0
+pi install git:github.com/rxreyn3/pi-statusline-session-name@v0.2.2
 ```
 
 ### npm install
@@ -62,15 +62,9 @@ pi install npm:pi-session-auto-rename
 pi install npm:pi-statusline-session-name
 ```
 
-Then start a new Pi session and send a prompt. Once `pi-session-auto-rename` generates a title, this extension will show it on the editor border.
+Then start a new Pi session and send a prompt. Once `pi-session-auto-rename` generates a title during normal message flow, this extension will show it on the editor border.
 
-You can also manually regenerate the name with:
-
-```text
-/name-ai
-```
-
-After manually renaming with `/name-ai`, run `/session-name-status refresh` if the border label has not updated yet. The label also refreshes after normal message lifecycle events.
+Pi does not currently expose a dedicated session-name-changed event to extensions, so this extension refreshes from lifecycle events. If another extension changes the session name outside normal message flow, run `/session-name-status refresh` to force the border label to update.
 
 ## Command
 
@@ -90,7 +84,9 @@ With no argument, the command toggles visibility.
 
 ## Notes
 
-This extension uses Pi's public `ctx.ui.setEditorComponent(...)` API. Like other custom-editor extensions, it may conflict with extensions that also replace the editor component; whichever extension sets the editor last wins.
+This extension uses Pi's public `ctx.ui.setEditorComponent(...)` API. Like other custom-editor extensions, it may conflict with extensions that also replace the editor component; whichever extension sets the editor last wins. If the label disappears after enabling another custom-editor extension, reinstall/reorder this extension or disable the other editor replacement.
+
+Visibility changes from `/session-name-status off`, `on`, or `toggle` persist for the current Pi process only.
 
 ## Publishing checklist
 

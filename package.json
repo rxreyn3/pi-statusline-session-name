@@ -1,6 +1,6 @@
 {
   "name": "pi-statusline-session-name",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Show the current Pi session name on the prompt editor border.",
   "type": "module",
   "keywords": [

@@ -2,15 +2,26 @@ import { CustomEditor, type ExtensionAPI, type ExtensionContext } from "@earendi
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 const MAX_LABEL_WIDTH = 60;
+const ANSI_ESCAPE_PATTERN = /\x1B(?:\][^\x07\x1B]*(?:\x07|\x1B\\)|\[[0-?]*[ -/]*[@-~]|[PX^_][^\x1B]*(?:\x1B\\)|[@-Z\\-_])/g;
+const CONTROL_CHARACTER_PATTERN = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g;
 
 type LabelContext = Pick<ExtensionContext, "hasUI" | "ui">;
 
+function stripTerminalControlSequences(text: string): string {
+	return text.replace(ANSI_ESCAPE_PATTERN, "").replace(CONTROL_CHARACTER_PATTERN, "");
+}
+
 function normalizeName(name: string | undefined): string | undefined {
 	const normalized = name
-		?.replace(/[\r\n\t]/g, " ")
-		.replace(/ +/g, " ")
-		.trim();
+		? stripTerminalControlSequences(name).replace(/[\r\n\t]/g, " ").replace(/ +/g, " ").trim()
+		: undefined;
 	return normalized || undefined;
+}
+
+function isPlainHorizontalBorder(line: string, width: number): boolean {
+	if (visibleWidth(line) !== width) return false;
+	const visibleLine = stripTerminalControlSequences(line);
+	return visibleLine.length > 0 && [...visibleLine].every((char) => char === "─");
 }
 
 function notify(ctx: LabelContext, message: string, level: "info" | "warning" | "error" = "info") {
@@ -22,10 +33,6 @@ function notify(ctx: LabelContext, message: string, level: "info" | "warning" | 
 class SessionNameEditor extends CustomEditor {
 	#sessionName: string | undefined;
 
-	constructor(...args: ConstructorParameters<typeof CustomEditor>) {
-		super(...args);
-	}
-
 	setSessionName(name: string | undefined): void {
 		const nextName = normalizeName(name);
 		if (this.#sessionName === nextName) return;
@@ -35,12 +42,12 @@ class SessionNameEditor extends CustomEditor {
 
 	render(width: number): string[] {
 		const lines = super.render(width);
-		if (!this.#sessionName || lines.length === 0 || width < 4) {
+		if (!this.#sessionName || lines.length === 0 || width < 6) {
 			return lines;
 		}
 
 		const topBorder = lines[0];
-		if (!topBorder || topBorder.includes("↑") || visibleWidth(topBorder) !== width) {
+		if (!topBorder || !isPlainHorizontalBorder(topBorder, width)) {
 			return lines;
 		}
 
@@ -49,31 +56,28 @@ class SessionNameEditor extends CustomEditor {
 	}
 
 	#renderTopBorder(width: number): string {
-		const maxNameWidth = Math.max(1, Math.min(MAX_LABEL_WIDTH, width - 2));
-		const name = truncateToWidth(this.#sessionName ?? "", maxNameWidth, "…");
-		const label = ` ${name} `;
-		const labelWidth = visibleWidth(label);
-		const fillWidth = Math.max(0, width - labelWidth);
+		const maxNameWidth = Math.max(1, Math.min(MAX_LABEL_WIDTH, width - 3));
+		const name = truncateToWidth(this.#sessionName!, maxNameWidth, "…");
+		const label = ` ${name}`;
+		const fillWidth = Math.max(1, width - visibleWidth(label));
 
-		if (fillWidth === 0) {
-			return this.borderColor(truncateToWidth(label, width, ""));
-		}
-
-		return this.borderColor("─".repeat(fillWidth)) + this.borderColor(label);
+		return this.borderColor("─".repeat(fillWidth) + label);
 	}
 }
 
 export default function (pi: ExtensionAPI) {
 	let visible = true;
 	let editor: SessionNameEditor | undefined;
+	let editorFactoryInstalled = false;
 
 	function refresh(ctx: LabelContext): void {
 		if (!ctx.hasUI) return;
 		editor?.setSessionName(visible ? pi.getSessionName() : undefined);
 	}
 
-	function installEditor(ctx: ExtensionContext): void {
-		if (!ctx.hasUI) return;
+	function installEditor(ctx: LabelContext): void {
+		if (!ctx.hasUI || editorFactoryInstalled) return;
+		editorFactoryInstalled = true;
 
 		ctx.ui.setEditorComponent((tui, theme, keybindings) => {
 			editor = new SessionNameEditor(tui, theme, keybindings);
@@ -87,34 +91,32 @@ export default function (pi: ExtensionAPI) {
 		handler: async (args, ctx) => {
 			const command = args.trim().toLowerCase();
 
-			if (command === "on" || command === "show") {
-				visible = true;
-				refresh(ctx);
-				notify(ctx, "Session name border label enabled.");
-				return;
+			switch (command) {
+				case "on":
+				case "show":
+					visible = true;
+					refresh(ctx);
+					notify(ctx, "Session name border label enabled.");
+					return;
+				case "off":
+				case "hide":
+					visible = false;
+					refresh(ctx);
+					notify(ctx, "Session name border label hidden.");
+					return;
+				case "refresh":
+					refresh(ctx);
+					notify(ctx, "Session name border label refreshed.");
+					return;
+				case "":
+				case "toggle":
+					visible = !visible;
+					refresh(ctx);
+					notify(ctx, visible ? "Session name border label enabled." : "Session name border label hidden.");
+					return;
+				default:
+					notify(ctx, "Usage: /session-name-status [on|off|toggle|refresh]", "warning");
 			}
-
-			if (command === "off" || command === "hide") {
-				visible = false;
-				refresh(ctx);
-				notify(ctx, "Session name border label hidden.");
-				return;
-			}
-
-			if (command === "refresh") {
-				refresh(ctx);
-				notify(ctx, "Session name border label refreshed.");
-				return;
-			}
-
-			if (command && command !== "toggle") {
-				notify(ctx, "Usage: /session-name-status [on|off|toggle|refresh]", "warning");
-				return;
-			}
-
-			visible = !visible;
-			refresh(ctx);
-			notify(ctx, visible ? "Session name border label enabled." : "Session name border label hidden.");
 		},
 	});
 
@@ -127,6 +129,9 @@ export default function (pi: ExtensionAPI) {
 		refresh(ctx);
 	});
 
+	// These hooks are intentionally redundant: companion rename extensions may update
+	// the session name during message_end or agent_end, and setSessionName(...) cheaply
+	// short-circuits unchanged values when multiple lifecycle hooks fire in one turn.
 	pi.on("message_end", async (_event, ctx) => {
 		refresh(ctx);
 	});
@@ -140,7 +145,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("session_shutdown", async () => {
-		editor?.setSessionName(undefined);
 		editor = undefined;
+		editorFactoryInstalled = false;
 	});
 }

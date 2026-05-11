@@ -3,4 +3,6 @@ node_modules/
 npm-debug.log*
 .DS_Store
 PLAN.md
+.pi/
+plans/
 .vscode/
