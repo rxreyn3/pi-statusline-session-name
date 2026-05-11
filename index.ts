@@ -1,130 +1,185 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth } from "@earendil-works/pi-tui";
+import { CustomEditor, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
-const STATUS_KEY = "session-name";
-const POLL_INTERVAL_MS = 1_000;
-const MAX_STATUS_WIDTH = 60;
+const LEGACY_STATUS_KEY = "session-name";
+const MAX_LABEL_WIDTH = 60;
 
-type StatusContext = Pick<ExtensionContext, "hasUI" | "ui">;
+type LabelContext = Pick<ExtensionContext, "hasUI" | "ui">;
+
+type RefreshTimer = ReturnType<typeof setTimeout>;
 
 function normalizeName(name: string | undefined): string | undefined {
-  const normalized = name
-    ?.replace(/[\r\n\t]/g, " ")
-    .replace(/ +/g, " ")
-    .trim();
-  return normalized || undefined;
+	const normalized = name
+		?.replace(/[\r\n\t]/g, " ")
+		.replace(/ +/g, " ")
+		.trim();
+	return normalized || undefined;
 }
 
-function notify(ctx: StatusContext, message: string, level: "info" | "warning" | "error" = "info") {
-  if (ctx.hasUI) {
-    ctx.ui.notify(message, level);
-  }
+function notify(ctx: LabelContext, message: string, level: "info" | "warning" | "error" = "info") {
+	if (ctx.hasUI) {
+		ctx.ui.notify(message, level);
+	}
+}
+
+class SessionNameEditor extends CustomEditor {
+	#sessionName: string | undefined;
+
+	constructor(...args: ConstructorParameters<typeof CustomEditor>) {
+		super(...args);
+	}
+
+	setSessionName(name: string | undefined): void {
+		const nextName = normalizeName(name);
+		if (this.#sessionName === nextName) return;
+		this.#sessionName = nextName;
+		this.tui.requestRender();
+	}
+
+	render(width: number): string[] {
+		const lines = super.render(width);
+		if (!this.#sessionName || lines.length === 0 || width < 4) {
+			return lines;
+		}
+
+		const topBorder = lines[0];
+		if (!topBorder || topBorder.includes("↑") || visibleWidth(topBorder) !== width) {
+			return lines;
+		}
+
+		lines[0] = this.#renderTopBorder(width);
+		return lines;
+	}
+
+	#renderTopBorder(width: number): string {
+		const maxNameWidth = Math.max(1, Math.min(MAX_LABEL_WIDTH, width - 2));
+		const name = truncateToWidth(this.#sessionName ?? "", maxNameWidth, "…");
+		const label = ` ${name} `;
+		const labelWidth = visibleWidth(label);
+		const fillWidth = Math.max(0, width - labelWidth);
+
+		if (fillWidth === 0) {
+			return this.borderColor(truncateToWidth(label, width, ""));
+		}
+
+		return this.borderColor("─".repeat(fillWidth)) + this.borderColor(label);
+	}
 }
 
 export default function (pi: ExtensionAPI) {
-  let visible = true;
-  let pollTimer: ReturnType<typeof setInterval> | undefined;
-  let lastStatusText: string | undefined;
+	let visible = true;
+	let editor: SessionNameEditor | undefined;
+	const refreshTimers = new Set<RefreshTimer>();
 
-  function buildStatus(ctx: StatusContext): string | undefined {
-    if (!visible) return undefined;
+	function refresh(ctx: LabelContext): void {
+		if (!ctx.hasUI) return;
 
-    const sessionName = normalizeName(pi.getSessionName());
-    if (!sessionName) return undefined;
+		// Clear the old footer/statusline slot used by v0.1.x so upgrading an active
+		// install does not leave a stale bottom-footer item behind.
+		ctx.ui.setStatus(LEGACY_STATUS_KEY, undefined);
+		editor?.setSessionName(visible ? pi.getSessionName() : undefined);
+	}
 
-    const theme = ctx.ui.theme;
-    const prefix = theme.fg("dim", "name: ");
-    const availableNameWidth = Math.max(1, MAX_STATUS_WIDTH - "name: ".length);
-    const name = theme.fg("accent", truncateToWidth(sessionName, availableNameWidth, "…"));
-    return prefix + name;
-  }
+	function scheduleRefresh(ctx: LabelContext, delayMs: number): void {
+		if (!ctx.hasUI) return;
 
-  function refresh(ctx: StatusContext, force = false): void {
-    if (!ctx.hasUI) return;
+		const timer = setTimeout(() => {
+			refreshTimers.delete(timer);
+			refresh(ctx);
+		}, delayMs);
+		refreshTimers.add(timer);
+	}
 
-    const nextStatusText = buildStatus(ctx);
-    if (force || nextStatusText !== lastStatusText) {
-      ctx.ui.setStatus(STATUS_KEY, nextStatusText);
-      lastStatusText = nextStatusText;
-    }
-  }
+	function clearScheduledRefreshes(): void {
+		for (const timer of refreshTimers) {
+			clearTimeout(timer);
+		}
+		refreshTimers.clear();
+	}
 
-  function stopPolling(ctx?: StatusContext): void {
-    if (pollTimer) {
-      clearInterval(pollTimer);
-      pollTimer = undefined;
-    }
+	function installEditor(ctx: ExtensionContext): void {
+		if (!ctx.hasUI) return;
 
-    if (ctx?.hasUI) {
-      ctx.ui.setStatus(STATUS_KEY, undefined);
-      lastStatusText = undefined;
-    }
-  }
+		ctx.ui.setStatus(LEGACY_STATUS_KEY, undefined);
+		ctx.ui.setEditorComponent((tui, theme, keybindings) => {
+			editor = new SessionNameEditor(tui, theme, keybindings);
+			editor.setSessionName(visible ? pi.getSessionName() : undefined);
+			return editor;
+		});
+	}
 
-  function startPolling(ctx: ExtensionContext): void {
-    stopPolling();
-    refresh(ctx, true);
+	pi.registerCommand("session-name-status", {
+		description: "Toggle or refresh the session name editor-border label",
+		handler: async (args, ctx) => {
+			const command = args.trim().toLowerCase();
 
-    if (!ctx.hasUI) return;
+			if (command === "on" || command === "show") {
+				visible = true;
+				refresh(ctx);
+				notify(ctx, "Session name border label enabled.");
+				return;
+			}
 
-    pollTimer = setInterval(() => {
-      refresh(ctx);
-    }, POLL_INTERVAL_MS);
-  }
+			if (command === "off" || command === "hide") {
+				visible = false;
+				refresh(ctx);
+				notify(ctx, "Session name border label hidden.");
+				return;
+			}
 
-  pi.registerCommand("session-name-status", {
-    description: "Toggle or refresh the session name statusline item",
-    handler: async (args, ctx) => {
-      const command = args.trim().toLowerCase();
+			if (command === "refresh") {
+				refresh(ctx);
+				notify(ctx, "Session name border label refreshed.");
+				return;
+			}
 
-      if (command === "on" || command === "show") {
-        visible = true;
-        refresh(ctx, true);
-        notify(ctx, "Session name status enabled.");
-        return;
-      }
+			if (command && command !== "toggle") {
+				notify(ctx, "Usage: /session-name-status [on|off|toggle|refresh]", "warning");
+				return;
+			}
 
-      if (command === "off" || command === "hide") {
-        visible = false;
-        refresh(ctx, true);
-        notify(ctx, "Session name status hidden.");
-        return;
-      }
+			visible = !visible;
+			refresh(ctx);
+			notify(ctx, visible ? "Session name border label enabled." : "Session name border label hidden.");
+		},
+	});
 
-      if (command === "refresh") {
-        refresh(ctx, true);
-        notify(ctx, "Session name status refreshed.");
-        return;
-      }
+	pi.on("session_start", async (_event, ctx) => {
+		installEditor(ctx);
+		refresh(ctx);
+	});
 
-      if (command && command !== "toggle") {
-        notify(ctx, "Usage: /session-name-status [on|off|toggle|refresh]", "warning");
-        return;
-      }
+	pi.on("session_tree", async (_event, ctx) => {
+		refresh(ctx);
+	});
 
-      visible = !visible;
-      refresh(ctx, true);
-      notify(ctx, visible ? "Session name status enabled." : "Session name status hidden.");
-    },
-  });
+	pi.on("message_end", async (_event, ctx) => {
+		refresh(ctx);
+	});
 
-  pi.on("session_start", async (_event, ctx) => {
-    startPolling(ctx);
-  });
+	pi.on("agent_end", async (_event, ctx) => {
+		refresh(ctx);
+	});
 
-  pi.on("message_end", async (_event, ctx) => {
-    refresh(ctx);
-  });
+	pi.on("turn_end", async (_event, ctx) => {
+		refresh(ctx);
+	});
 
-  pi.on("agent_end", async (_event, ctx) => {
-    refresh(ctx);
-  });
+	pi.on("input", async (event, ctx) => {
+		const text = event.text.trim();
+		if (/^\/name(?:\s|$)/.test(text)) {
+			scheduleRefresh(ctx, 250);
+		} else if (/^\/name-ai(?:\s|$)/.test(text)) {
+			scheduleRefresh(ctx, 10_000);
+		}
+	});
 
-  pi.on("turn_end", async (_event, ctx) => {
-    refresh(ctx);
-  });
-
-  pi.on("session_shutdown", async (_event, ctx) => {
-    stopPolling(ctx);
-  });
+	pi.on("session_shutdown", async (_event, ctx) => {
+		clearScheduledRefreshes();
+		editor?.setSessionName(undefined);
+		editor = undefined;
+		if (ctx.hasUI) {
+			ctx.ui.setStatus(LEGACY_STATUS_KEY, undefined);
+		}
+	});
 }

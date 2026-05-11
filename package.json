@@ -1,7 +1,7 @@
 {
   "name": "pi-statusline-session-name",
-  "version": "0.1.0",
-  "description": "Show the current Pi session name in the statusline/footer.",
+  "version": "0.2.0",
+  "description": "Show the current Pi session name on the prompt editor border.",
   "type": "module",
   "keywords": [
     "pi-package",
@@ -9,7 +9,8 @@
     "pi-coding-agent",
     "extension",
     "session",
-    "statusline"
+    "statusline",
+    "editor-border"
   ],
   "license": "MIT",
   "author": "Ryan Reynolds",
