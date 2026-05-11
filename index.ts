@@ -1,12 +1,9 @@
 import { CustomEditor, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
-const LEGACY_STATUS_KEY = "session-name";
 const MAX_LABEL_WIDTH = 60;
 
 type LabelContext = Pick<ExtensionContext, "hasUI" | "ui">;
-
-type RefreshTimer = ReturnType<typeof setTimeout>;
 
 function normalizeName(name: string | undefined): string | undefined {
 	const normalized = name
@@ -69,38 +66,15 @@ class SessionNameEditor extends CustomEditor {
 export default function (pi: ExtensionAPI) {
 	let visible = true;
 	let editor: SessionNameEditor | undefined;
-	const refreshTimers = new Set<RefreshTimer>();
 
 	function refresh(ctx: LabelContext): void {
 		if (!ctx.hasUI) return;
-
-		// Clear the old footer/statusline slot used by v0.1.x so upgrading an active
-		// install does not leave a stale bottom-footer item behind.
-		ctx.ui.setStatus(LEGACY_STATUS_KEY, undefined);
 		editor?.setSessionName(visible ? pi.getSessionName() : undefined);
-	}
-
-	function scheduleRefresh(ctx: LabelContext, delayMs: number): void {
-		if (!ctx.hasUI) return;
-
-		const timer = setTimeout(() => {
-			refreshTimers.delete(timer);
-			refresh(ctx);
-		}, delayMs);
-		refreshTimers.add(timer);
-	}
-
-	function clearScheduledRefreshes(): void {
-		for (const timer of refreshTimers) {
-			clearTimeout(timer);
-		}
-		refreshTimers.clear();
 	}
 
 	function installEditor(ctx: ExtensionContext): void {
 		if (!ctx.hasUI) return;
 
-		ctx.ui.setStatus(LEGACY_STATUS_KEY, undefined);
 		ctx.ui.setEditorComponent((tui, theme, keybindings) => {
 			editor = new SessionNameEditor(tui, theme, keybindings);
 			editor.setSessionName(visible ? pi.getSessionName() : undefined);
@@ -165,21 +139,8 @@ export default function (pi: ExtensionAPI) {
 		refresh(ctx);
 	});
 
-	pi.on("input", async (event, ctx) => {
-		const text = event.text.trim();
-		if (/^\/name(?:\s|$)/.test(text)) {
-			scheduleRefresh(ctx, 250);
-		} else if (/^\/name-ai(?:\s|$)/.test(text)) {
-			scheduleRefresh(ctx, 10_000);
-		}
-	});
-
-	pi.on("session_shutdown", async (_event, ctx) => {
-		clearScheduledRefreshes();
+	pi.on("session_shutdown", async () => {
 		editor?.setSessionName(undefined);
 		editor = undefined;
-		if (ctx.hasUI) {
-			ctx.ui.setStatus(LEGACY_STATUS_KEY, undefined);
-		}
 	});
 }
