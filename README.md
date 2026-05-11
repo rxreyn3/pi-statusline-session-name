@@ -1,4 +1,4 @@
-# pi-statusline-session-name
+# pi-session-name-border
 
 Show the current [Pi](https://pi.dev) session name on the prompt editor's horizontal border.
 
@@ -26,31 +26,31 @@ No Pi core/source changes are required.
 From the parent directory containing this package:
 
 ```bash
-pi install ./pi-statusline-session-name
+pi install ./pi-session-name-border
 ```
 
 Or run Pi with the extension for only the current invocation:
 
 ```bash
-pi -e ./pi-statusline-session-name
+pi -e ./pi-session-name-border
 ```
 
 ### GitHub install
 
 ```bash
-pi install git:github.com/rxreyn3/pi-statusline-session-name
+pi install git:github.com/rxreyn3/pi-session-name-border
 ```
 
 You can also pin a tag or branch:
 
 ```bash
-pi install git:github.com/rxreyn3/pi-statusline-session-name@v0.2.2
+pi install git:github.com/rxreyn3/pi-session-name-border@v0.2.2
 ```
 
 ### npm install
 
 ```bash
-pi install npm:pi-statusline-session-name
+pi install npm:pi-session-name-border
 ```
 
 ## Pairing with pi-session-auto-rename
@@ -59,7 +59,7 @@ Install both packages:
 
 ```bash
 pi install npm:pi-session-auto-rename
-pi install npm:pi-statusline-session-name
+pi install npm:pi-session-name-border
 ```
 
 Then start a new Pi session and send a prompt. Once `pi-session-auto-rename` generates a title during normal message flow, this extension will show it on the editor border.
@@ -94,11 +94,11 @@ To make this available to other users and eligible for discovery on <https://pi.
 
 1. Ensure `package.json` includes the `pi-package` keyword and a `pi.extensions` manifest.
 2. Commit the package to git.
-3. Create/push the public GitHub repository at `github.com/rxreyn3/pi-statusline-session-name`.
+3. Create/push the public GitHub repository at `github.com/rxreyn3/pi-session-name-border`.
 4. Verify GitHub install:
 
    ```bash
-   pi install git:github.com/rxreyn3/pi-statusline-session-name
+   pi install git:github.com/rxreyn3/pi-session-name-border
    ```
 
 5. Publish to npm:
@@ -111,7 +111,7 @@ To make this available to other users and eligible for discovery on <https://pi.
 6. Verify npm install:
 
    ```bash
-   pi install npm:pi-statusline-session-name
+   pi install npm:pi-session-name-border
    ```
 
 The Pi package gallery displays packages tagged with `pi-package`; publishing publicly via npm is the best path for broad package-gallery discoverability.
