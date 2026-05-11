@@ -1,0 +1,38 @@
+{
+  "name": "pi-statusline-session-name",
+  "version": "0.1.0",
+  "description": "Show the current Pi session name in the statusline/footer.",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-coding-agent",
+    "extension",
+    "session",
+    "statusline"
+  ],
+  "license": "MIT",
+  "author": "Ryan Reynolds",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rxreyn3/pi-statusline-session-name.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rxreyn3/pi-statusline-session-name/issues"
+  },
+  "homepage": "https://github.com/rxreyn3/pi-statusline-session-name#readme",
+  "files": [
+    "index.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  }
+}
