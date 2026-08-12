@@ -144,6 +144,14 @@ export default function (pi: ExtensionAPI) {
 		refresh(ctx);
 	});
 
+	// session_info_changed is the event pi.setSessionName(...) emits, so a
+	// rename extension (pi-session-title, pi-session-auto-rename, ...) is
+	// reflected on the border the moment the name lands - no need to wait for
+	// the next message/agent/turn lifecycle hook.
+	pi.on("session_info_changed", async (_event, ctx) => {
+		refresh(ctx);
+	});
+
 	pi.on("session_shutdown", async () => {
 		editor = undefined;
 		editorFactoryInstalled = false;
